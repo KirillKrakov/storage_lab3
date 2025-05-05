@@ -1,0 +1,54 @@
+TxJo_7860
+iNp7PSZa - ssh postgres0@pg105
+fqZIHqMk - ssh postgres2@pg111
+ssh -J s368373@helios.cs.ifmo.ru:2222 postgres0@pg105
+
+export PGDATA=$HOME/evh98
+export ENC=ISO8859-15
+export LANG=en_US.ISO8859-15
+initdb -D $PGDATA --encoding=$ENC --locale=$LANG
+#редактирование evh98/postgresql.conf
+scp -J s368373@helios.cs.ifmo.ru:2222 "C:/Users/Krako/Downloads/postgresql.conf" postgres0@pg105:evh98/
+scp -J s368373@helios.cs.ifmo.ru:2222 "C:/Users/Krako/Downloads/pg_hba.conf" postgres0@pg105:evh98/
+pg_ctl -D evh98 start
+psql -p 9792 -d postgres -c "SHOW max_connections;"
+
+
+mkdir -p fnd85
+chmod 700 fnd85
+psql -p 9792 -d postgres -c "CREATE TABLESPACE fnd85 LOCATION '/var/db/postgres0/fnd85';"
+psql -p 9792 -d postgres -c "UPDATE pg_database SET datistemplate = FALSE WHERE datname = 'template1';"
+psql -p 9792 -d postgres -c "DROP DATABASE template1;"
+psql -p 9792 -d postgres -c "CREATE DATABASE template1 WITH TEMPLATE template0 TABLESPACE fnd85 IS_TEMPLATE true;"
+psql -p 9792 -d postgres -c "CREATE DATABASE drypinklab WITH TEMPLATE template0;"
+psql -p 9792 -d postgres -c "CREATE ROLE user_fnd LOGIN PASSWORD 'user_fnd';"
+psql -p 9792 -d postgres -c "GRANT CONNECT ON DATABASE drypinklab TO user_fnd;"
+psql -p 9792 -d postgres -c "GRANT CREATE ON DATABASE drypinklab TO user_fnd;"
+psql -p 9792 -d postgres -c "ALTER DATABASE drypinklab OWNER TO user_fnd;"
+
+
+psql -h 127.0.0.1 -p 9792 -U user_fnd -d drypinklab
+CREATE TABLE test_table (id SERIAL PRIMARY KEY, data TEXT);
+INSERT INTO test_table (data) VALUES ('test1'), ('test2');
+SELECT * FROM test_table;
+\db
+WITH objects AS (
+    SELECT
+    COALESCE(t.spcname, 'pg_default') AS tablespace_name,
+    c.relname AS object_name
+    FROM pg_class c
+    LEFT JOIN pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relkind IN ('r', 'i') -- tables (r) and indexes (i)
+),
+result AS (
+    SELECT
+    tablespace_name,
+    object_name,
+    ROW_NUMBER() OVER (PARTITION BY tablespace_name ORDER BY object_name) AS obj_number
+    FROM objects
+    ORDER BY tablespace_name, obj_number
+)
+SELECT
+    CASE WHEN obj_number = 1 THEN tablespace_name ELSE '' END AS tablespace_name,
+    object_name
+FROM result;
