@@ -310,12 +310,13 @@ chmod 700 wal_archive
 
 Включим WAL в postgresql.conf:
 ```sh
+archive_mode = on
 wal_level = replica
 archive_command = 'cp %p $HOME/wal_archive/%f'
 restore_command = 'cp $HOME/wal_archive/%f %p'
 ```
 
-Создадим таблицы с внешними ключами:
+Создадим таблицы с внешними ключами. Добавим данные в родительскую таблицу:
 ```SQL
 psql -p 9792 -d postgres
 
@@ -337,11 +338,6 @@ INSERT INTO parent_table (data) VALUES
     ('Parent 2'),
     ('Parent 3');
 
-INSERT INTO child_table (parent_id, details) VALUES
-    (1, 'Child 1'),
-    (2, 'Child 2'),
-    (3, 'Child 3');
-
 -- Проверяем данные
 SELECT * FROM parent_table;
  id |   data
@@ -350,7 +346,19 @@ SELECT * FROM parent_table;
   2 | Parent 2
   3 | Parent 3
 (3 строки)
+```
+Сделаем бэкап:
+```sh
+pg_basebackup -D RESERVE -X stream -p 9792
+```
+Теперь внесём хорошие данные в дочернюю таблицу:
+```SQL
+INSERT INTO child_table (parent_id, details) VALUES
+    (1, 'Child 1'),
+    (2, 'Child 2'),
+    (3, 'Child 3');
 
+-- Проверяем данные
 SELECT * FROM child_table;
  parent_id | details
 -----------+---------
@@ -359,20 +367,16 @@ SELECT * FROM child_table;
          3 | Child 3
 (3 строки)
 ```
-Сделаем бэкап:
-```sh
-pg_basebackup -D RESERVE -X stream -p 9792
-```
 Запоминаем время:
-```sh
-psql -p 9792 -d postgres -c "SELECT now();"
+```SQL
+SELECT now();
 ```
 ```
               now
 -------------------------------
  2025-05-05 06:39:18.238291+03
 ```
-Испортим данные во второй таблице child_table:
+Испортим данные в дочерней таблице:
 ```SQL
 ALTER TABLE child_table DROP CONSTRAINT child_table_parent_id_fkey;
 
@@ -380,11 +384,6 @@ ALTER TABLE child_table DROP CONSTRAINT child_table_parent_id_fkey;
 UPDATE child_table SET parent_id = 10 WHERE parent_id = 1;
 UPDATE child_table SET parent_id = 20 WHERE parent_id = 2;
 UPDATE child_table SET parent_id = 30 WHERE parent_id = 3;
-
-ALTER TABLE child_table 
-    ADD CONSTRAINT child_table_parent_id_fkey 
-    FOREIGN KEY (parent_id) REFERENCES parent_table(id) 
-    NOT VALID;
 ```
 
 Проверим содержимое таблиц:
@@ -396,9 +395,7 @@ SELECT * FROM parent_table;
   2 | Parent 2
   3 | Parent 3
 (3 строки)
-```
 
-```SQL
 SELECT * FROM child_table;
  parent_id | details
 -----------+---------
@@ -416,23 +413,22 @@ pg_ctl -D $HOME/evh98 stop
 rm -rf evh98
 cp -r RESERVE/ evh98/
 ```
-Изменим postgresql.conf:
+Изменим postgresql.conf (vi evh98/postgresql.conf):
 ```sh
 recovery_target_time = '2025-05-05 06:39:18'
 recovery_target_action = 'promote'
 ```
 Создадим файл внутри директории кластера, он сообщит БД, что нужно восстановить данные из архива:
 ```sh
+rm -rf evh98/pg_tblspc/16384
 touch evh98/recovery.signal
 chmod -R 750 evh98
 ```
 Запустим сервер, дождемся восстановления: 
 ```sh
 pg_ctl -D evh98 start
-rm evh98/recovery.signal
-pg_ctl -D evh98 start
 ``` 
-Проверим состояние таблицы:
+Проверим состояние таблицы (psql -p 9792 -d postgres):
 ```sh
 SELECT * FROM child_table;
  parent_id | details
