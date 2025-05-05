@@ -177,7 +177,7 @@ SELECT * FROM fnd85_test_table;
 bash $HOME/backup.sh >> $HOME/backup.log 2>&1
 ```
 
-Удалим конфигурационныt файлы СУБД со всем содержимым (симуляция сбоя):
+Удалим конфигурационные файлы СУБД со всем содержимым (симуляция сбоя):
 ```sh
 rm -rf $HOME/evh98/postgresql.conf $HOME/evh98/pg_hba.conf
 ```
