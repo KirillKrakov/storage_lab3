@@ -116,7 +116,7 @@ if [ ! -f "${latest_backup}" ]; then
 fi
 echo "Using ${latest_backup}"
 # Останавливаем сервер
-pg_ctl -D ${DB_DIR} stop
+pg_ctl -D ${DB_DIR} status && pg_ctl -D ${DB_DIR} stop
 # Пересоздаем директории кластера 
 rm -rf ${DB_DIR}
 mkdir ${DB_DIR}
